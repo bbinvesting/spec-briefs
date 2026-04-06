@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Marketing-Product Spec Briefs</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f4f0; color: #1a1a1a; font-size: 15px; line-height: 1.7; }
+  input, select, textarea, button { font-family: inherit; }
+  button { cursor: pointer; background: transparent; border: 1px solid #ddd; border-radius: 8px; padding: 6px 14px; font-size: 13px; }
+  button:hover { background: #f5f5f5; }
+  select { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  textarea, input[type="text"] { border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; font-size: 14px; width: 100%; }
+  textarea:focus, input:focus, select:focus { outline: 2px solid #4a6cf7; outline-offset: 1px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const STATUS_COLORS = {
+  "Draft": { bg: "#fff8e1", text: "#7a5a00" },
+  "Under Review": { bg: "#e3f2fd", text: "#0d47a1" },
+  "Approved": { bg: "#e8f5e9", text: "#1b5e20" },
+  "Live": { bg: "#f3e5f5", text: "#4a148c" },
+  "Complete": { bg: "#f5f5f5", text: "#555" },
+};
+
+const TYPE_COLORS = {
+  "Onboarding": "#4a6cf7",
+  "Referral": "#e67e22",
+  "Engagement": "#27ae60",
+  "Monetization": "#8e44ad",
+  "Other": "#888",
+};
+
+const SEED_BRIEFS = [
+  {
+    id: "brief-1",
+    title: "Brokerage Linkage Incentive – 3-Month PRO Offer",
+    type: "Onboarding",
+    status: "Draft",
+    date: "2026-04-06",
+    summary: "Tests whether a time-delayed prompt offering 3 months of Blossom PRO for free meaningfully increases brokerage linkage rates among non-linked users.",
+    hypothesis: "If we present non-linked users at D7+ with a prompt offering 3 months of Blossom PRO for free upon linking their brokerage, then brokerage linkage rates will increase significantly, because a high-perceived-value incentive reduces the activation barrier while D7+ timing filters for retained, high-intent users.",
+    metrics: { primary: "Brokerage linkage rate within 14 days of prompt", secondary: ["PRO trial → paid conversion at D90 & D120", "Prompt engagement rate", "Linkage rate by market & platform"], guardrail: ["PRO subscriber churn rate", "Support ticket volume", "Incentive abuse / gaming rate"] },
+    variants: [{ label: "Control", name: "Variant A — No change", desc: "Users receive no incentive prompt. Existing passive nudges remain in place." }, { label: "Treatment", name: "Variant B — PRO Incentive Prompt", desc: "In-app prompt at D7+ offering 3 months of Blossom PRO for free upon brokerage linkage." }],
+    audience: "New users D7+ with no brokerage linked; existing MAUs who've never linked. iOS & Android, US & Canada.",
+    risks: "Perceived unfairness among existing PRO subscribers; incentive abuse via repeat registrations; security hesitancy. Early stop if PRO churn spikes.",
+    dependencies: "Engineering: prompt component, D7+ trigger logic, PRO trial provisioning, analytics events. Design mockups + copy needed. Est. effort: M–L.",
+    postTest: { win: "Roll out to 100%. Track D90/D120 PRO conversion as follow-on.", null: "Re-test with stronger incentive or revised timing/messaging.", loss: "Archive. Revisit brokerage linkage strategy with product." },
+  },
+];
+
+const STEPS = [
+  { id: "title", label: "Title", question: "Give this experiment a name.", placeholder: "e.g. Referral Program Reward A/B Test" },
+  { id: "type", label: "Type", question: "What category does this fall under?", isSelect: true, options: Object.keys(TYPE_COLORS) },
+  { id: "background", label: "Background", question: "What's the problem or opportunity?", placeholder: "e.g. Our referral program has low conversion..." },
+  { id: "change", label: "Change", question: "What do you want to test?", placeholder: "e.g. Increase the referral reward from $5 to $15..." },
+  { id: "metrics", label: "Metrics", question: "How will you measure success?", placeholder: "e.g. Primary: referral conversion rate. Secondary: new user activation..." },
+];
+
+const STORAGE_KEY = "spec-briefs-data";
+
+function loadBriefs() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveBriefsToStorage(briefs) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(briefs)); } catch {}
+}
+
+function StatusPill({ status }) {
+  const c = STATUS_COLORS[status] || STATUS_COLORS["Draft"];
+  return <span style={{ background: c.bg, color: c.text, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, letterSpacing: "0.04em" }}>{status}</span>;
+}
+
+function TypeBadge({ type }) {
+  const c = TYPE_COLORS[type] || "#888";
+  return <span style={{ background: c + "18", color: c, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, letterSpacing: "0.04em" }}>{type}</span>;
+}
+
+function BriefCard({ brief, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 12, padding: "18px 20px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, boxShadow: hov ? "0 2px 12px rgba(0,0,0,0.08)" : "none", transition: "box-shadow 0.15s" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <TypeBadge type={brief.type} />
+        <StatusPill status={brief.status} />
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#111", lineHeight: 1.4 }}>{brief.title}</div>
+      <div style={{ fontSize: 13, color: "#666", lineHeight: 1.5, flex: 1 }}>{brief.summary}</div>
+      <div style={{ fontSize: 12, color: "#aaa" }}>{new Date(brief.date).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}</div>
+    </div>
+  );
+}
+
+function BriefRow({ brief, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <tr onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ cursor: "pointer", borderBottom: "1px solid #f0ede8", background: hov ? "#fafaf8" : "transparent" }}>
+      <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 500, color: "#111" }}>{brief.title}</td>
+      <td style={{ padding: "12px 8px" }}><TypeBadge type={brief.type} /></td>
+      <td style={{ padding: "12px 8px" }}><StatusPill status={brief.status} /></td>
+      <td style={{ padding: "12px 16px", fontSize: 13, color: "#888" }}>{new Date(brief.date).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })}</td>
+    </tr>
+  );
+}
+
+function DetailView({ brief, onBack, onStatusChange, onDelete }) {
+  const statuses = Object.keys(STATUS_COLORS);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 2rem 4rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={onBack}>← Back</button>
+          <select value={brief.status} onChange={e => onStatusChange(e.target.value)}>
+            {statuses.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} style={{ color: "#c0392b", borderColor: "#f5c6c6", background: "#fff9f9" }}>Delete</button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, color: "#c0392b" }}>Are you sure?</span>
+            <button onClick={onDelete} style={{ background: "#c0392b", color: "#fff", border: "none" }}>Yes, delete</button>
+            <button onClick={() => setConfirmDelete(false)}>Cancel</button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <TypeBadge type={brief.type} />
+        <span style={{ fontSize: 12, color: "#aaa", alignSelf: "center" }}>{new Date(brief.date).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}</span>
+      </div>
+      <h2 style={{ fontSize: 24, fontWeight: 700, color: "#111", marginBottom: 24, lineHeight: 1.3 }}>{brief.title}</h2>
+
+      {[
+        { num: "01", title: "Summary", content: <p style={{ fontSize: 14.5, color: "#333", lineHeight: 1.7 }}>{brief.summary}</p> },
+        { num: "02", title: "Hypothesis", content: <div style={{ background: "#f0f4ff", borderLeft: "3px solid #4a6cf7", borderRadius: "0 8px 8px 0", padding: "14px 18px", fontSize: 14.5, lineHeight: 1.8, color: "#222" }}>{brief.hypothesis}</div> },
+        { num: "03", title: "Metrics", content: (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 10 }}>
+            <div style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#1d6b3e", marginBottom: 6 }}>Primary</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#111" }}>{brief.metrics?.primary}</div>
+            </div>
+            {brief.metrics?.secondary?.map((m, i) => (
+              <div key={i} style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#4a6cf7", marginBottom: 6 }}>Secondary</div>
+                <div style={{ fontSize: 13.5, color: "#333" }}>{m}</div>
+              </div>
+            ))}
+            {brief.metrics?.guardrail?.map((m, i) => (
+              <div key={i} style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#c05c00", marginBottom: 6 }}>Guardrail</div>
+                <div style={{ fontSize: 13.5, color: "#333" }}>{m}</div>
+              </div>
+            ))}
+          </div>
+        )},
+        { num: "04", title: "Variants", content: (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {brief.variants?.map((v, i) => (
+              <div key={i} style={{ background: "#fff", border: "1px solid #e8e6e1", borderTop: "3px solid " + (i === 0 ? "#ccc" : "#4a6cf7"), borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#888", marginBottom: 4 }}>{v.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 6 }}>{v.name}</div>
+                <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>{v.desc}</div>
+              </div>
+            ))}
+          </div>
+        )},
+        { num: "05", title: "Audience", content: <p style={{ fontSize: 14.5, color: "#333", lineHeight: 1.7 }}>{brief.audience}</p> },
+        { num: "06", title: "Risks & Guardrails", content: <p style={{ fontSize: 14.5, color: "#333", lineHeight: 1.7 }}>{brief.risks}</p> },
+        { num: "07", title: "Dependencies", content: <p style={{ fontSize: 14.5, color: "#333", lineHeight: 1.7 }}>{brief.dependencies}</p> },
+        { num: "08", title: "Post-Test Plan", content: (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+            {[{ label: "Variant Wins", color: "#1d6b3e", text: brief.postTest?.win }, { label: "No Significant Result", color: "#888", text: brief.postTest?.null }, { label: "Control Wins", color: "#c0392b", text: brief.postTest?.loss }].map((o, i) => (
+              <div key={i} style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: o.color, marginBottom: 6 }}>{o.label}</div>
+                <div style={{ fontSize: 13, color: "#555", lineHeight: 1.5 }}>{o.text}</div>
+              </div>
+            ))}
+          </div>
+        )},
+      ].map(s => (
+        <div key={s.num} style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#bbb", minWidth: 20 }}>{s.num}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#777" }}>{s.title}</span>
+          </div>
+          {s.content}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NewBriefModal({ onClose, onSave }) {
+  const [step, setStep] = useState(0);
+  const [inputs, setInputs] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const cur = STEPS[step];
+  const isLast = step === STEPS.length - 1;
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const schema = '{"summary":"2 sentence summary","hypothesis":"Full if/then/because hypothesis","metrics":{"primary":"primary metric","secondary":["metric1","metric2","metric3"],"guardrail":["guardrail1","guardrail2"]},"variants":[{"label":"Control","name":"Variant A — No change","desc":"..."},{"label":"Treatment","name":"Variant B — ...","desc":"..."}],"audience":"1-2 sentence audience description","risks":"2-3 sentence risks and guardrails","dependencies":"2-3 sentence dependencies and effort","postTest":{"win":"what to do if variant wins","null":"what to do if no result","loss":"what to do if control wins"}}';
+      const promptText = ["You are a product growth expert. Generate a structured A/B test experiment brief as a JSON object (no markdown, no backticks, just raw JSON) with these exact fields:", schema, "Inputs:", "Title: " + inputs.title, "Type: " + inputs.type, "Background: " + inputs.background, "Change to test: " + inputs.change, "Metrics: " + inputs.metrics].join("\n");
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: promptText }] })
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || "API error " + res.status); }
+      const data = await res.json();
+      const raw = data.content?.map(b => b.text || "").join("") || "";
+      if (!raw) throw new Error("Empty response from API.");
+      let parsed;
+      try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
+      catch { throw new Error("Couldn't parse the generated brief. Please try again."); }
+      onSave({ id: "brief-" + Date.now(), title: inputs.title, type: inputs.type || "Other", status: "Draft", date: new Date().toISOString().split("T")[0], ...parsed });
+    } catch (e) { setError(e.message || "Something went wrong."); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 520, boxShadow: "0 8px 40px rgba(0,0,0,0.15)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>New experiment brief</span>
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 16, color: "#888" }}>✕</button>
+        </div>
+        <div style={{ display: "flex", gap: 5, marginBottom: 20 }}>
+          {STEPS.map((s, i) => <div key={s.id} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? "#4a6cf7" : "#eee", opacity: i < step ? 0.4 : 1 }} />)}
+        </div>
+        <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{cur.question}</p>
+        {cur.isSelect ? (
+          <select value={inputs[cur.id] || ""} onChange={e => setInputs(p => ({ ...p, [cur.id]: e.target.value }))} style={{ width: "100%" }}>
+            <option value="" disabled>Select a type...</option>
+            {cur.options.map(o => <option key={o}>{o}</option>)}
+          </select>
+        ) : (
+          <textarea value={inputs[cur.id] || ""} onChange={e => setInputs(p => ({ ...p, [cur.id]: e.target.value }))} placeholder={cur.placeholder} rows={4} />
+        )}
+        {error && <p style={{ fontSize: 13, color: "#c0392b", marginTop: 10, background: "#fdf0f0", padding: "8px 12px", borderRadius: 8 }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+          <button onClick={() => setStep(s => s - 1)} disabled={step === 0} style={{ opacity: step === 0 ? 0.3 : 1 }}>Back</button>
+          <button onClick={isLast ? generate : () => setStep(s => s + 1)} disabled={!inputs[cur.id]?.trim() || loading}
+            style={{ opacity: !inputs[cur.id]?.trim() || loading ? 0.4 : 1, background: "#4a6cf7", color: "#fff", border: "none", padding: "8px 18px" }}>
+            {loading ? "Generating..." : isLast ? "Generate & save →" : "Next"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Hub() {
+  const [briefs, setBriefs] = useState([]);
+  const [view, setView] = useState("grid");
+  const [selected, setSelected] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [filterType, setFilterType] = useState("All");
+  const [filterStatus, setFilterStatus] = useState("All");
+
+  useEffect(() => {
+    const saved = loadBriefs();
+    setBriefs(saved || SEED_BRIEFS);
+    if (!saved) saveBriefsToStorage(SEED_BRIEFS);
+  }, []);
+
+  function save(updated) {
+    setBriefs(updated);
+    saveBriefsToStorage(updated);
+  }
+
+  function handleSave(brief) {
+    const updated = [...briefs, brief];
+    save(updated);
+    setShowNew(false);
+    setSelected(brief);
+  }
+
+  function handleStatusChange(status) {
+    const updated = briefs.map(b => b.id === selected.id ? { ...b, status } : b);
+    save(updated);
+    setSelected(prev => ({ ...prev, status }));
+  }
+
+  function handleDelete() {
+    save(briefs.filter(b => b.id !== selected.id));
+    setSelected(null);
+  }
+
+  const filtered = briefs.filter(b => (filterType === "All" || b.type === filterType) && (filterStatus === "All" || b.status === filterStatus));
+  const stats = { total: briefs.length, live: briefs.filter(b => b.status === "Live").length, draft: briefs.filter(b => b.status === "Draft").length, complete: briefs.filter(b => b.status === "Complete").length };
+
+  if (selected) {
+    const full = briefs.find(b => b.id === selected.id) || selected;
+    return <DetailView brief={full} onBack={() => setSelected(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} />;
+  }
+
+  return (
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 2rem 4rem" }}>
+      {showNew && <NewBriefModal onClose={() => setShowNew(false)} onSave={handleSave} />}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111", margin: 0 }}>Marketing-Product Spec Briefs</h1>
+          <p style={{ fontSize: 13, color: "#888", margin: "4px 0 0" }}>All marketing → product experiment briefs</p>
+        </div>
+        <button onClick={() => setShowNew(true)} style={{ background: "#4a6cf7", color: "#fff", border: "none", padding: "9px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600 }}>+ New brief</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 24 }}>
+        {[{ label: "Total", val: stats.total, color: "#4a6cf7" }, { label: "Live", val: stats.live, color: "#8e44ad" }, { label: "Draft", val: stats.draft, color: "#7a5a00" }, { label: "Complete", val: stats.complete, color: "#555" }].map(s => (
+          <div key={s.label} style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 10, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#aaa", marginBottom: 6 }}>{s.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}>
+            <option>All</option>
+            {Object.keys(TYPE_COLORS).map(t => <option key={t}>{t}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+            <option>All</option>
+            {Object.keys(STATUS_COLORS).map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {["grid", "list"].map(v => (
+            <button key={v} onClick={() => setView(v)} style={{ fontWeight: view === v ? 600 : 400, background: view === v ? "#f0f0f0" : "transparent" }}>{v === "grid" ? "⊞ Grid" : "☰ List"}</button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 && <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa", fontSize: 14 }}>No briefs match your filters.</div>}
+
+      {view === "grid" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 14 }}>
+          {filtered.map(b => <BriefCard key={b.id} brief={b} onClick={() => setSelected(b)} />)}
+        </div>
+      ) : (
+        <div style={{ background: "#fff", border: "1px solid #e8e6e1", borderRadius: 12, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #f0ede8", background: "#fafaf8" }}>
+                {["Title", "Type", "Status", "Date"].map(h => <th key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#aaa", textAlign: "left" }}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(b => <BriefRow key={b.id} brief={b} onClick={() => setSelected(b)} />)}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Hub />);
+</script>
+</body>
+</html>
